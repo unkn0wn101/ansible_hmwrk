@@ -1,2 +1,60 @@
 ---
+#run on all hosts
+- hosts: all
+  become: true
+  pre_tasks:
 
+#check and update the packages on all hosts
+  - name: install updates (Ubuntu)
+    tags: always
+    apt:
+      upgrade: dist
+      update_cache: yes
+    #when: ansible_distribution == "Ubuntu"
+
+#Setup Monitoring with Prometheus and Grafana: Installs Prometheus and Grafana, configures them to start on boot, and sets up firewall rules to allow traffic.
+- name: Setup Monitoring with Prometheus and Grafana
+  hosts: server1
+  become: true
+  tasks:
+    - name: Install Prometheus and Grafana
+      apt:
+        name: 
+          - prometheus
+          - grafana
+        state: latest
+
+    - name: Start and Enable Prometheus and Grafana
+      service:
+        name: 
+          - prometheus
+          - grafana-server
+        state: started
+        enabled: yes #centOS has it disabled by default
+
+    - name: Configure Prometheus to scrape metrics
+      copy:
+        src: prometheus.yml
+        dest: /etc/prometheus/prometheus.yml
+      notify: Restart Prometheus
+
+    - name: Open firewall for Grafana and Prometheus
+      ufw:
+        rule: allow
+        name: 'Prometheus'
+      notify: Reload firewall
+
+    - name: Open firewall for Grafana
+      ufw:
+        rule: allow
+        name: 'Grafana'
+      notify: Reload firewall
+
+  handlers:
+    - name: Restart Prometheus
+      service:
+        name: prometheus
+        state: restarted
+
+    - name: Reload firewall
+      command: ufw reload    
