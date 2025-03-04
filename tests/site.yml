@@ -27,14 +27,14 @@
     package: 
       name: unzip
 
-  - name: install terraform
-    unarchive:
-      src: https://releases.hashicorp.com/terraform/1.11.0/terraform_1.11.0_linux.amd64.zip
-      dest: /usr/local/bin
-      remote_src: yes
-      mode: 0755
-      owner: root
-      group: root
+#  - name: install terraform
+#    unarchive:
+#      src: https://releases.hashicorp.com/terraform/1.11.0/terraform_1.11.0_linux.amd64.zip
+#      dest: /usr/local/bin
+#      remote_src: yes
+#      mode: 0755
+#      owner: root
+#      group: root
 
 #run on all web servers only
 - hosts: web_servers
