@@ -16,3 +16,4 @@
 #- import_playbook: test.yml
 - import_playbook: install_prometheus_grafana.yml 
 
+- import_playbook: install_node_exporter.yml

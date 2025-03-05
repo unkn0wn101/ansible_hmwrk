@@ -1,0 +1,101 @@
+---
+- name: Install Node Exporter
+  hosts: server2
+  become: true
+  vars:
+    node_exporter_version: "1.8.2"  # Latest as of now; check https://github.com/prometheus/node_exporter/releases
+    node_exporter_user: "node_exporter"
+    node_exporter_group: "node_exporter"
+    node_exporter_listen_address: "0.0.0.0:9100"  # Accessible to Prometheus
+    prometheus_config_dir: "/etc/prometheus"  
+    grafana_provisioning_dir: "/etc/grafana/provisioning"
+    local_dir: "/home/mihai/ansible"
+    temp_dir: "/tmp/staging"
+
+  tasks:
+    - name: Ensure Node Exporter user exists
+      ansible.builtin.user:
+        name: "{{ node_exporter_user }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
+        state: present
+
+    - name: Ensure Node Exporter group exists
+      ansible.builtin.group:
+        name: "{{ node_exporter_group }}"
+        system: yes
+        state: present
+
+    - name: Download and extract Node Exporter
+      ansible.builtin.unarchive:
+        src: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+        dest: "/tmp/"
+        remote_src: yes
+
+    - name: Move Node Exporter binary to /usr/local/bin
+      ansible.builtin.copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        dest: "/usr/local/bin/node_exporter"
+        owner: "{{ node_exporter_user }}"
+        group: "{{ node_exporter_user }}"
+        mode: 0755
+        remote_src: yes
+
+    - name: Clean up Node Exporter tarball
+      ansible.builtin.file:
+        path: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
+        state: absent
+
+    - name: Deploy Node Exporter systemd service file
+      ansible.builtin.template:
+        src: etc/systemd/system/node_exporter.service.j2
+        dest: "/etc/systemd/system/node_exporter.service"
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart Node Exporter
+
+    - name: Ensure Node Exporter service is enabled and started
+      ansible.builtin.systemd:
+        name: node_exporter
+        enabled: yes
+        state: started
+
+    - name: Allow Node Exporter port in UFW (if enabled)
+      ansible.builtin.ufw:
+        rule: allow
+        port: "9100"
+        proto: tcp
+
+    - name: Add Node Exporter scrape config to Prometheus (on Prometheus server)
+      ansible.builtin.lineinfile:
+        path: "{{ prometheus_config_dir }}/prometheus.yml"
+        regexp: '^scrape_configs:'
+        line: |
+          scrape_configs:
+            - job_name: "node_exporter_server2"
+              static_configs:
+                - targets: ["{{ ansible_host }}:9100"]
+        insertafter: '^global:'
+      delegate_to: server1
+      notify: Restart Prometheus
+
+  handlers:
+    - name: Restart Prometheus
+      ansible.builtin.systemd:
+        name: prometheus
+        state: restarted
+      delegate_to: server1  
+
+    - name: Restart Grafana
+      ansible.builtin.service:
+        name: grafana-server
+        state: restarted
+
+    - name: Restart Node Exporter
+      ansible.builtin.systemd:
+        name: node_exporter
+        state: restarted        

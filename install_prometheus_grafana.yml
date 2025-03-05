@@ -10,12 +10,14 @@
     grafana_user: "grafana"
     grafana_config_dir: "/etc/grafana"
     grafana_data_dir: "/var/lib/grafana"
+    grafana_provisioning_dir: "/etc/grafana/provisioning"
     grafana_port: "3000" 
     #prometheus_url: "http://localhost:9090"
     grafana_install_repo: "https://rpm.grafana.com"
     grafana_install_gpg_key: "https://rpm.grafana.com/gpg.key"
     grafana_admin_user: "admin"
     grafana_admin_password: "admin"
+    local_dir: "/home/mihai/ansible"
 
   tasks:
     - name: Install necessary packages
@@ -26,13 +28,19 @@
           - software-properties-common
         state: present
     #Install and configure Prometheus      
-    - name: Create Prometheus user
-      user:
+
+    - name: Ensure Prometheus user exists
+      ansible.builtin.user:
         name: "{{ prometheus_user }}"
-        group: "{{ prometheus_user }}"
         system: yes
+        create_home: no
         shell: /bin/false
-        create_home: false
+        state: present
+
+    - name: Ensure Prometheus group exists
+      ansible.builtin.group:
+        name: "{{ prometheus_user }}"
+        system: yes
         state: present
 
     - name: Install Prometheus
@@ -80,7 +88,7 @@
       loop:
         - { src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus.yml", dest: "{{ prometheus_config_dir }}/prometheus.yml" }
         - { src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus", dest: "/usr/local/bin/prometheus" }
-        - { src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/promtool", dest: "/usr/local/bin/promtool" }                       
+        - { src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/promtool", dest: "/usr/local/bin/promtool" }
 
     - name: Create Prometheus systemd service file
       ansible.builtin.template:
@@ -90,6 +98,7 @@
           group: "{{ prometheus_user }}"
           mode: '0644'
       notify:
+        - Reload systemd
         - Restart prometheus
 
     - name: Start and enable Prometheus service
@@ -102,14 +111,28 @@
       uri:
         url: http://localhost:9090
         method: GET
-        status_code: 200    
-      
+        status_code: 200
+
     - name: Delete prometheus tmp folder
-      file:
+      ansible.builtin.file:
         path: '/tmp/prometheus-{{ prometheus_version }}.linux-amd64'
         state: absent
 
-  #Install and configure Grafana  
+  #Install and configure Grafana
+    - name: Ensure Grafana user exists
+      ansible.builtin.user:
+        name: "{{ grafana_user }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
+        state: present
+
+    - name: Ensure Grafana group exists
+      ansible.builtin.group:
+        name: "{{ grafana_user }}"
+        system: yes
+        state: present
+
     - name: Add Grafana APT key
       ansible.builtin.apt_key:
         url: "https://apt.grafana.com/gpg-full.key"
@@ -128,7 +151,7 @@
         state: latest
         update_cache: yes
 
-    - name: Ensure Grafana configuration and data directories exists
+    - name: Ensure Grafana necessary directories exists
       ansible.builtin.file:
           path: "{{ item.path }}"
           #path: "{{ grafana_config_dir }}"
@@ -139,7 +162,30 @@
       loop:
         - { path: "{{ grafana_config_dir }}" }
         - { path: "{{ grafana_data_dir }}" }
-        
+        - { path: "{{ grafana_provisioning_dir }}" }
+
+    - name: Ensure Grafana provisioning directories exist (on Grafana server)
+      ansible.builtin.file:
+        path: "{{ grafana_provisioning_dir }}/{{ item }}"
+        state: directory
+        owner: "{{ grafana_user }}"
+        group: "{{ grafana_user }}"
+        mode: '0755'
+      loop:
+        - "dashboards"
+        - "datasources"
+
+    - name: Deploy Grafana dashboard provisioning file and preconfigured Node Exporter dashboard
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: "{{ grafana_user }}"
+        group: "{{ grafana_user }}"
+        mode: 0644
+      loop:
+        - { src: "{{ local_dir }}/files/dashboards.yml", dest: "{{ grafana_provisioning_dir }}/dashboards/dashboards.yml" }
+        - { src: "{{ local_dir }}/files/node_exporter_dashboard.json", dest: "{{ grafana_provisioning_dir }}/dashboards/node_exporter_dashboard.json" }
+
     - name: Configure Grafana INI file
       ansible.builtin.template:
         src: etc/systemd/system/grafana.ini.j2
@@ -147,7 +193,9 @@
         owner: "{{ grafana_user }}"
         group: "{{ grafana_user }}"
         mode: '0644'
-      notify: Restart Grafana
+      notify:
+        - Reload systemd
+        - Restart Grafana
 
     - name: Ensure Grafana service is enabled and started
       ansible.builtin.systemd:
@@ -163,12 +211,6 @@
         delay: 5
         timeout: 30
 
-    - name: Check if Grafana is accessible
-      uri:
-        url: http://localhost:{{ grafana_port }}
-        method: GET
-        status_code: 200
-
     - name: Allow Grafana and Prometheus ports in UFW
       ansible.builtin.ufw:
         rule: allow
@@ -176,14 +218,20 @@
         proto: tcp
       loop:
         - "3000"
-        - "9090"        
+        - "9090"
+
+    - name: Check if Grafana is accessible
+      uri:
+        url: http://localhost:{{ grafana_port }}
+        method: GET
+        status_code: 200
 
     - name: Add Prometheus data source to Grafana
       ansible.builtin.uri:
         url: "http://localhost:{{ grafana_port }}/api/datasources"
         method: POST
         user: "{{ grafana_admin_user }}"
-        password: "{{ grafana_admin_password }}"        
+        password: "{{ grafana_admin_password }}"
         body_format: json
         body: |
           {
@@ -202,8 +250,16 @@
       until: datasource_result.status == 200 or datasource_result.status == 409
 
   handlers:
-    - name: Restart Grafana
+    - name: Restart Prometheus
       ansible.builtin.systemd:
+        name: prometheus
+        state: restarted
+
+    - name: Restart Grafana
+      ansible.builtin.service:
         name: grafana-server
         state: restarted
-      
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
