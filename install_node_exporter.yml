@@ -13,18 +13,19 @@
     temp_dir: "/tmp/staging"
 
   tasks:
-    - name: Ensure Node Exporter user exists
-      ansible.builtin.user:
-        name: "{{ node_exporter_user }}"
-        system: yes
-        create_home: no
-        shell: /bin/false
-        state: present
-
     - name: Ensure Node Exporter group exists
       ansible.builtin.group:
         name: "{{ node_exporter_group }}"
         system: yes
+        state: present
+
+    - name: Ensure Node Exporter user exists
+      ansible.builtin.user:
+        name: "{{ node_exporter_user }}"
+        group: "{{ node_exporter_user }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
         state: present
 
     - name: Download and extract Node Exporter
@@ -64,11 +65,12 @@
         enabled: yes
         state: started
 
-    - name: Allow Node Exporter port in UFW (if enabled)
+    - name: Allow Node Exporter port 9100 in UFW
       ansible.builtin.ufw:
         rule: allow
         port: "9100"
         proto: tcp
+        state: enabled
 
     - name: Add Node Exporter scrape config to Prometheus (on Prometheus server)
       ansible.builtin.lineinfile:

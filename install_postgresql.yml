@@ -1,0 +1,151 @@
+---
+- name: Install postgresql and openresty to server2
+  hosts: server2
+  become: true
+  vars:
+    opsusr_name: "OPSUSR"
+    postgresql_version: "16" 
+    postgresql_user: "test"
+    openresty_listen_port: "80"
+    postgresql_listen_port: "5432"
+    local_dir: "/home/mihai/ansible"
+    script_path: "/tmp/create_postgresql_test_user.sh"
+    credential_file: "/tmp/postgresql_test_user.txt" 
+
+  tasks:
+    - name: Ensure OPSUSR group exists
+      ansible.builtin.group:
+        name: "{{ opsusr_name }}"
+        state: present
+
+    - name: Ensure OPSUSR user exists
+      ansible.builtin.user:
+        name: "{{ opsusr_name }}"
+        group: "{{ opsusr_name }}"
+        comment: "User to run applications"
+        shell: "/bin/bash"
+        create_home: yes
+        home: "/home/{{ opsusr_name }}"
+        state: present
+
+    - name: Ensure OPSUSR home directory permissions are secure
+      ansible.builtin.file:
+        path: "/home/{{ opsusr_name }}"
+        owner: "{{ opsusr_name }}"
+        group: "{{ opsusr_name }}"
+        mode: '0700'                # Restrict access to OPSUSR only        
+
+    - name: Add OpenResty APT key
+      ansible.builtin.apt_key:
+        url: https://openresty.org/package/pubkey.gpg
+        state: present
+
+    - name: Add OpenResty APT repository
+      ansible.builtin.apt_repository:
+        repo: "deb http://openresty.org/package/ubuntu {{ ansible_distribution_release }} main"
+        state: present
+        filename: openresty
+        update_cache: yes
+
+    - name: Install OpenResty
+      ansible.builtin.apt:
+        name: openresty
+        state: present
+        update_cache: yes
+
+    - name: Ensure OpenResty service is running
+      ansible.builtin.systemd:
+        name: openresty
+        state: started
+        enabled: yes 
+
+    - name: Ensure OpenResty runs under OPSUSR
+      ansible.builtin.lineinfile:
+        path: "/lib/systemd/system/openresty.service"
+        regexp: "^User="
+        line: "User=OPSUSR"
+        state: present
+      notify: Restart OpenResty
+
+    - name: Install PostgreSQL
+      ansible.builtin.apt:
+        name: "postgresql-{{ postgresql_version }}"
+        state: present
+        update_cache: yes
+        
+    - name: Enable all other computers to connect to the PostgreSQL server
+      ansible.builtin.lineinfile:
+        path: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+        regexp: "^#listen_addresses = "
+        insertafter: '^listen_addresses = '
+        line: "listen_addresses = '*' "
+        create: yes
+        mode: '0644'
+      notify: Reload systemd and restart PostgreSQL      
+
+    - name: Ensure PostgreSQL service is running
+      ansible.builtin.systemd:
+        name: "postgresql@{{ postgresql_version }}-main"
+        state: started
+        enabled: yes
+
+    - name: Deploy shell script to create Test user
+      ansible.builtin.copy:
+        src: "{{ local_dir }}/scripts/create_postgresql_test_user.sh"
+        dest: "/tmp/"
+        owner: "{{ opsusr_name }}"
+        group: "{{ opsusr_name }}"
+        mode: '0755'      
+
+    - name: Execute shell script to create Test user
+      ansible.builtin.command: "{{ script_path }}"
+      register: script_result
+      changed_when: script_result.rc == 0
+      failed_when: script_result.rc != 0
+
+    - name: Display script output
+      ansible.builtin.debug:
+        msg: "{{ script_result.stdout_lines }}"
+
+    - name: Copy credentials file back to control node
+      ansible.builtin.fetch:
+        src: "{{ credential_file }}"
+        dest: "./postgresql_test_user.txt"
+        flat: yes
+
+    - name: Clean up script and credential file on server2
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ script_path }}"
+        - "{{ credential_file }}"
+
+    - name: Allow OpenResty and PostgreSQL ports in UFW
+      ansible.builtin.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+        state: enabled
+      loop:
+        - "{{ openresty_listen_port }}"
+        - "{{ postgresql_listen_port }}"
+
+    - name: Check if OpenResty is accessible
+      uri:
+        url: http://localhost:80
+        method: GET
+        status_code: 200     
+
+  handlers:
+    - name: Restart OpenResty
+      ansible.builtin.systemd:
+        name: openresty
+        state: restarted
+        daemon_reload: yes
+
+    - name: Reload systemd and restart PostgreSQL
+      ansible.builtin.systemd:
+        name: "postgresql@{{ postgresql_version }}-main"
+        daemon_reload: yes
+        state: restarted                  

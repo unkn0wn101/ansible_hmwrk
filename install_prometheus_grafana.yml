@@ -29,18 +29,19 @@
         state: present
     #Install and configure Prometheus      
 
-    - name: Ensure Prometheus user exists
-      ansible.builtin.user:
-        name: "{{ prometheus_user }}"
-        system: yes
-        create_home: no
-        shell: /bin/false
-        state: present
-
     - name: Ensure Prometheus group exists
       ansible.builtin.group:
         name: "{{ prometheus_user }}"
         system: yes
+        state: present
+
+    - name: Ensure Prometheus user exists
+      ansible.builtin.user:
+        name: "{{ prometheus_user }}"
+        group: "{{ prometheus_user }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
         state: present
 
     - name: Install Prometheus
@@ -119,18 +120,19 @@
         state: absent
 
   #Install and configure Grafana
-    - name: Ensure Grafana user exists
-      ansible.builtin.user:
-        name: "{{ grafana_user }}"
-        system: yes
-        create_home: no
-        shell: /bin/false
-        state: present
-
     - name: Ensure Grafana group exists
       ansible.builtin.group:
         name: "{{ grafana_user }}"
         system: yes
+        state: present
+
+    - name: Ensure Grafana user exists
+      ansible.builtin.user:
+        name: "{{ grafana_user }}"
+        group: "{{ grafana_user }}"
+        system: yes
+        create_home: no
+        shell: /bin/false
         state: present
 
     - name: Add Grafana APT key
@@ -216,6 +218,7 @@
         rule: allow
         port: "{{ item }}"
         proto: tcp
+        state: enabled
       loop:
         - "3000"
         - "9090"

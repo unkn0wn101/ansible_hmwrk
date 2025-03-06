@@ -10,8 +10,12 @@
     apt:
       upgrade: dist
       update_cache: yes
+    #when: ansible_distribution == "Ubuntu"
 
 #Setup Monitoring with Prometheus and Grafana: Installs Prometheus and Grafana, configures them to start on boot, and sets up firewall rules to allow traffic.
+#- import_playbook: test.yml
 - import_playbook: install_prometheus_grafana.yml 
-#Install a metrics exporter which monitors the (CPU/RAM/Disk Usage) of server2.
+#Setup a metrics exporter (Node exporter) on Server2 to monitor (CPU/RAM/Disk Usage).
 - import_playbook: install_node_exporter.yml
+#Setup Openresty and Postgresql on server2, configure a default user (test) with a random pw and open firewall for all incoming HTTP, SQL traffic on Server2
+- import_playbook: install_postgresql.yml
