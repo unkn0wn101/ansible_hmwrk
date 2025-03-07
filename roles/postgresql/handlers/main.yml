@@ -1,0 +1,5 @@
+- name: Reload systemd and restart PostgreSQL
+  ansible.builtin.systemd:
+    name: "postgresql@{{ postgresql_version }}-main"
+    daemon_reload: yes
+    state: restarted      

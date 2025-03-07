@@ -1,0 +1,42 @@
+- name: Add Grafana APT key
+  ansible.builtin.apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+    filename: grafana
+    update_cache: yes
+
+- name: Install Grafana
+  apt:
+    name: grafana
+    state: latest
+    update_cache: yes    
+
+- name: "Grafana configuration file copy"
+  template:
+    src: "grafana.ini.j2"
+    dest: /etc/grafana/grafana.ini
+  notify: event_restart_grafana
+
+- name: "Grafana server started"
+  ansible.builtin.service:
+    name: grafana-server
+    enabled: true
+    state: started
+
+- name: Allow Grafana port in UFW
+  ufw:
+    rule: allow
+    port: "{{ grafana_port }}"
+    proto: tcp
+    state: enabled    
+
+- name: "Check if Grafana is accessible."
+  uri:
+    url: "http://127.0.0.1:{{ grafana_port }}"
+    method: GET
+    status_code: 200

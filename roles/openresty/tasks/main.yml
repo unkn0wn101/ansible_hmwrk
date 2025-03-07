@@ -1,0 +1,59 @@
+- name: Ensure OPSUSR group exists
+  ansible.builtin.group:
+    name: "{{ opsusr_name }}"
+    state: present
+
+- name: Ensure OPSUSR user exists
+  ansible.builtin.user:
+    name: "{{ opsusr_name }}"
+    group: "{{ opsusr_name }}"
+    comment: "User to run applications"
+    shell: "/bin/bash"
+    create_home: yes
+    home: "/home/{{ opsusr_name }}"
+    state: present
+
+- name: Add OpenResty APT key
+  ansible.builtin.apt_key:
+    url: https://openresty.org/package/pubkey.gpg
+    state: present
+
+- name: Add OpenResty APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb http://openresty.org/package/ubuntu {{ ansible_distribution_release }} main"
+    state: present
+    filename: openresty
+    update_cache: yes
+
+- name: Install OpenResty
+  apt:
+    name: openresty
+    state: present
+    update_cache: yes
+
+- name: Ensure OpenResty runs under OPSUSR
+  ansible.builtin.lineinfile:
+    path: "/lib/systemd/system/openresty.service"
+    regexp: "^User="
+    line: "User=OPSUSR"
+    state: present
+  notify: Restart OpenResty    
+
+- name: Ensure OpenResty service is running
+  ansible.builtin.systemd:
+    name: openresty
+    state: started
+    enabled: yes 
+
+- name: Allow OpenResty and PostgreSQL ports in UFW
+  ufw:
+    rule: allow
+    port: 80
+    proto: tcp
+    state: enabled
+
+- name: Check if OpenResty is accessible
+  uri:
+    url: http://localhost:80
+    method: GET
+    status_code: 200    

@@ -5,17 +5,50 @@
   pre_tasks:
 
 #check and update the packages on all hosts
-  - name: install updates (Ubuntu)
+  - name: Update repo cache (Ubuntu)
     tags: always
     apt:
       upgrade: dist
       update_cache: yes
-    #when: ansible_distribution == "Ubuntu"
 
-#Setup Monitoring with Prometheus and Grafana: Installs Prometheus and Grafana, configures them to start on boot, and sets up firewall rules to allow traffic.
-#- import_playbook: test.yml
-- import_playbook: install_prometheus_grafana.yml 
-#Setup a metrics exporter (Node exporter) on Server2 to monitor (CPU/RAM/Disk Usage).
-- import_playbook: install_node_exporter.yml
-#Setup Openresty and Postgresql on server2, configure a default user (test) with a random pw and open firewall for all incoming HTTP, SQL traffic on Server2
-- import_playbook: install_postgresql.yml
+- hosts: alertmanager
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - alertmanager
+
+- hosts: node_exporter
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - prometheus_node_exporter
+
+- hosts: prometheus
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - prometheus
+
+- hosts: grafana
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - grafana
+
+- hosts: openresty
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - openresty
+
+- hosts: postgresql
+  become: yes
+  become_user: root
+  become_method: sudo
+  roles:
+    - postgresql

@@ -1,0 +1,9 @@
+---
+opsusr_name: "OPSUSR"
+postgresql_version: "16" 
+postgresql_user: "test"
+#openresty_listen_port: "80"
+postgresql_listen_port: "5432"
+#local_dir: "/home/mihai/ansible"
+script_path: "/tmp/create_postgresql_test_user.sh"
+credential_file: "/tmp/postgresql_test_user.txt" 

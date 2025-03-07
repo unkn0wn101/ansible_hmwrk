@@ -1,7 +1,0 @@
----
-node_exporter_version: "1.8.2"  # Latest as of now; check https://github.com/prometheus/node_exporter/releases
-node_exporter_user: "node_exporter"
-node_exporter_group: "node_exporter"
-node_exporter_listen_address: "0.0.0.0:9100"  # Accessible to Prometheus
-prometheus_config_dir: "/etc/prometheus"  # On Prometheus server (adjust if different)
-grafana_provisioning_dir: "/etc/grafana/provisioning"  # On Grafana server
